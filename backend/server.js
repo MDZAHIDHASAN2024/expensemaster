@@ -7,12 +7,8 @@ dotenv.config();
 
 const app = express();
 
-app.use(
-  cors({
-    origin: ['http://localhost:3000', 'https://expensemasterone.vercel.app'],
-    credentials: true,
-  }),
-);
+app.use(cors());
+app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -34,7 +30,6 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
-    // Indexes for performance
     mongoose.connection
       .collection('expenses')
       .createIndex({ user: 1, date: -1 })
