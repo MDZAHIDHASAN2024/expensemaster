@@ -97,7 +97,7 @@ export default function Dashboard() {
   return (
     <div>
       <div className="page-header">
-        <h1>📊 Dashboard</h1>
+        <h1>📊 Dashboard V:0.01</h1>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <select
             style={{

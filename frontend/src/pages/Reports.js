@@ -35,6 +35,14 @@ export default function Reports() {
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewQty, setPreviewQty] = useState(0);
 
+  // Yearly summary
+  const [yearlyYear, setYearlyYear] = useState(
+    new Date().getFullYear().toString(),
+  );
+  const [yearlySummary, setYearlySummary] = useState([]);
+  const [yearlyLoading, setYearlyLoading] = useState(false);
+  const [yearlyTotal, setYearlyTotal] = useState({ qty: 0, amount: 0 });
+
   React.useEffect(() => {
     API.get('/categories/types')
       .then((r) => setTypes(r.data))
@@ -81,6 +89,39 @@ export default function Reports() {
     }
   };
 
+  // Yearly summary load
+  const loadYearlySummary = async () => {
+    setYearlyLoading(true);
+    try {
+      const { data } = await API.get(
+        '/reports/yearly-summary?year=' + yearlyYear,
+      );
+      setYearlySummary(data.rows || []);
+      setYearlyTotal({
+        qty: data.totalQty || 0,
+        amount: data.totalAmount || 0,
+      });
+    } catch (err) {
+      toast.error('Failed to load yearly summary');
+    }
+    setYearlyLoading(false);
+  };
+
+  const exportYearly = (type) => {
+    try {
+      const user = JSON.parse(localStorage.getItem('expenseUser') || '{}');
+      const baseURL =
+        process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      const path =
+        type === 'excel' ? 'reports/yearly-excel' : 'reports/yearly-pdf';
+      const fullURL = `${baseURL}/${path}?year=${yearlyYear}&token=${user.token}`;
+      window.open(fullURL, '_blank');
+      toast.success(type === 'excel' ? 'Excel exported!' : 'PDF exported!');
+    } catch (err) {
+      toast.error('Export failed');
+    }
+  };
+
   const months = [
     { v: '1', l: 'January' },
     { v: '2', l: 'February' },
@@ -113,6 +154,7 @@ export default function Reports() {
         <h1>📋 Expense Reports</h1>
       </div>
 
+      {/* ── Filtered Report ── */}
       <div className="card" style={{ marginBottom: 20 }}>
         <h3 style={{ marginBottom: 16, color: 'var(--primary)' }}>
           🔍 Filter Report
@@ -330,6 +372,172 @@ export default function Reports() {
           </div>
         </div>
       )}
+
+      {/* ── Yearly Summary ── */}
+      <div className="card" style={{ marginTop: 28 }}>
+        <h3 style={{ marginBottom: 16, color: 'var(--primary)' }}>
+          📅 Yearly Item Summary
+        </h3>
+        <p
+          style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 14 }}
+        >
+          Selected year এ কোন item কত qty ও কত amount খরচ হয়েছে
+        </p>
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            flexWrap: 'wrap',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>Year</label>
+            <select
+              value={yearlyYear}
+              onChange={(e) => setYearlyYear(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1.5px solid var(--border)',
+                fontSize: 13,
+                background: 'var(--input-bg)',
+                color: 'var(--text)',
+              }}
+            >
+              {[2020, 2021, 2022, 2023, 2024, 2025, 2026].map((y) => (
+                <option key={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={loadYearlySummary}
+            disabled={yearlyLoading}
+          >
+            {yearlyLoading ? (
+              <>
+                <span className="spinner-sm" />
+                Loading...
+              </>
+            ) : (
+              '👁️ Preview'
+            )}
+          </button>
+          <button
+            className="btn btn-success"
+            onClick={() => exportYearly('excel')}
+            disabled={yearlyLoading}
+          >
+            📊 Export Excel
+          </button>
+          <button
+            className="btn"
+            style={{
+              background: 'linear-gradient(135deg,#c53030,#e53e3e)',
+              color: 'white',
+            }}
+            onClick={() => exportYearly('pdf')}
+            disabled={yearlyLoading}
+          >
+            📄 Export PDF
+          </button>
+        </div>
+
+        {yearlyLoading && <Spinner text="Loading yearly summary..." />}
+
+        {!yearlyLoading && yearlySummary.length > 0 && (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 12,
+                margin: '16px 0 10px',
+              }}
+            >
+              <span>
+                <strong>{yearlySummary.length}</strong> items
+              </span>
+              <div style={{ display: 'flex', gap: 20 }}>
+                <span>
+                  Total Qty:{' '}
+                  <strong style={{ color: 'var(--primary)' }}>
+                    {yearlyTotal.qty.toLocaleString()}
+                  </strong>
+                </span>
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: 'var(--primary)',
+                  }}
+                >
+                  Total: ৳{yearlyTotal.amount.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <div
+              className="table-wrapper"
+              style={{ boxShadow: 'none', padding: 0 }}
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Item Type</th>
+                    <th>Item Description</th>
+                    <th style={{ textAlign: 'right' }}>Total Qty</th>
+                    <th style={{ textAlign: 'right' }}>Total Amount (৳)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {yearlySummary.map((row, i) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td>
+                        <span className="badge badge-blue">{row.itemType}</span>
+                      </td>
+                      <td>{row.itemDescription}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {row.totalQty}
+                      </td>
+                      <td className="amount-cell">
+                        ৳{row.totalAmount.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="total-row">
+                    <td colSpan={3} style={{ textAlign: 'right' }}>
+                      TOTAL
+                    </td>
+                    <td
+                      style={{
+                        textAlign: 'right',
+                        fontWeight: 700,
+                        color: 'var(--primary)',
+                      }}
+                    >
+                      {yearlyTotal.qty.toLocaleString()}
+                    </td>
+                    <td className="amount-cell">
+                      ৳{yearlyTotal.amount.toLocaleString()}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {!yearlyLoading && yearlySummary.length === 0 && (
+          <div className="empty-state" style={{ marginTop: 20 }}>
+            <div className="empty-icon">📅</div>
+            <p>Year select করে Preview চাপুন</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

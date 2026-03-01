@@ -21,6 +21,9 @@ const protectQuery = async (req, res, next) => {
   }
 };
 
+// middleware/auth এর protect ও দরকার yearly-summary এর জন্য
+const { protect } = require('../middleware/auth');
+
 const getFilteredExpenses = async (userId, query) => {
   const { startDate, endDate, month, year, itemType } = query;
   let filter = { user: userId };
@@ -56,17 +59,19 @@ const formatDate = (date) => {
 };
 
 const formatDateTime = (date) => {
-  const d = new Date(date);
-  const time =
-    d.getHours().toString().padStart(2, '0') +
-    ':' +
-    d.getMinutes().toString().padStart(2, '0') +
-    ':' +
-    d.getSeconds().toString().padStart(2, '0');
-  return formatDate(d) + ' ' + time;
+  const now = new Date(
+    new Date(date).toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }),
+  );
+  const dd = now.getDate().toString().padStart(2, '0');
+  const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const hh = now.getHours().toString().padStart(2, '0');
+  const min = now.getMinutes().toString().padStart(2, '0');
+  const ss = now.getSeconds().toString().padStart(2, '0');
+  return dd + '/' + mm + '/' + yyyy + ' ' + hh + ':' + min + ':' + ss;
 };
 
-// Export Excel
+// ── Export Excel (filtered) ──────────────────────────────────────────────────
 router.get('/excel', protectQuery, async (req, res) => {
   try {
     const expenses = await getFilteredExpenses(req.user._id, req.query);
@@ -126,7 +131,7 @@ router.get('/excel', protectQuery, async (req, res) => {
   }
 });
 
-// Export PDF - A4 Portrait
+// ── Export PDF (filtered, A4 Portrait) ──────────────────────────────────────
 router.get('/pdf', protectQuery, async (req, res) => {
   try {
     const expenses = await getFilteredExpenses(req.user._id, req.query);
@@ -140,17 +145,17 @@ router.get('/pdf', protectQuery, async (req, res) => {
         : parseFloat(n.toFixed(3)).toString();
     };
 
-    const PAGE_W = 595.28;
-    const PAGE_H = 841.89;
-    const MARGIN_X = 30;
+    const PAGE_W = 595.28,
+      PAGE_H = 841.89,
+      MARGIN_X = 30;
     const TABLE_W = PAGE_W - MARGIN_X * 2;
-    const ROW_H = 18;
-    const HEADER_H = 22;
-    const FOOTER_H = 20;
+    const ROW_H = 18,
+      HEADER_H = 22,
+      FOOTER_H = 20;
     const CONTENT_MAX_Y = PAGE_H - FOOTER_H - 10;
-    const FONT_SIZE = 7.5;
-    const HEADER_FONT_SIZE = 7.5;
-    const CELL_PAD = 6;
+    const FONT_SIZE = 7.5,
+      HEADER_FONT_SIZE = 7.5,
+      CELL_PAD = 6;
 
     const doc = new PDFDocument({
       size: [PAGE_W, PAGE_H],
@@ -158,7 +163,6 @@ router.get('/pdf', protectQuery, async (req, res) => {
       autoFirstPage: true,
       bufferPages: true,
     });
-
     const buffers = [];
     doc.on('data', (chunk) => buffers.push(chunk));
     doc.on('end', () => {
@@ -187,39 +191,18 @@ router.get('/pdf', protectQuery, async (req, res) => {
       'Amount (BDT)',
       'Remarks',
     ];
-
-    // প্রতিটি column-এর সব data (header + rows + total) থেকে সবচেয়ে চওড়া text measure করে dynamic width বের করা
     const measureText = (text, font, size) => {
       doc.font(font).fontSize(size);
       return doc.widthOfString(String(text));
     };
-
-    // প্রতিটি column-এর max content width বের করা
-    const minWidths = [
-      4, // #       — সংখ্যা ছোট
-      28, // Date    — dd/mm/yyyy
-      20, // Month   — short month
-      16, // Year    — 4 digit
-      30, // Item Type
-      40, // Description
-      14, // Unit
-      14, // Qty
-      30, // Amount
-      30, // Remarks
-    ];
-
-    // col index যেগুলো right align
+    const minWidths = [4, 28, 20, 16, 30, 40, 14, 14, 30, 30];
     const colAlign = (i) => (i === 7 || i === 8 ? 'right' : 'left');
 
-    // প্রতিটি column-এর raw max text width (pt) বের করা
     const rawWidths = headers.map((h, i) => {
-      // header width
       let max = measureText(h, 'Helvetica-Bold', HEADER_FONT_SIZE);
-
-      // data rows
       expenses.forEach((e) => {
-        const cellValues = [
-          '', // # — placeholder, আলাদা handle
+        const vals = [
+          '',
           formatDate(e.date),
           new Date(e.date).toLocaleString('default', { month: 'short' }),
           new Date(e.date).getFullYear().toString(),
@@ -230,22 +213,18 @@ router.get('/pdf', protectQuery, async (req, res) => {
           e.amount.toFixed(2),
           e.remarks || '',
         ];
-        const w = measureText(cellValues[i], 'Helvetica', FONT_SIZE);
+        const w = measureText(vals[i], 'Helvetica', FONT_SIZE);
         if (w > max) max = w;
       });
-
-      // # column — row number সর্বোচ্চ কত digit
       if (i === 0) {
-        const maxNum = measureText(
+        const n = measureText(
           expenses.length.toString(),
           'Helvetica',
           FONT_SIZE,
         );
-        if (maxNum > max) max = maxNum;
+        if (n > max) max = n;
       }
-
-      // Grand Total row
-      const totalRowVals = [
+      const tv = [
         '',
         '',
         '',
@@ -257,21 +236,15 @@ router.get('/pdf', protectQuery, async (req, res) => {
         total.toFixed(2),
         '',
       ];
-      const tw = measureText(totalRowVals[i], 'Helvetica-Bold', 9);
+      const tw = measureText(tv[i], 'Helvetica-Bold', 9);
       if (tw > max) max = tw;
-
       return max;
     });
 
-    // raw width + padding, কিন্তু minimum enforce করা
     const paddedWidths = rawWidths.map((w, i) =>
       Math.max(w + CELL_PAD * 2, minWidths[i]),
     );
-
     const rawTotal = paddedWidths.reduce((a, b) => a + b, 0);
-
-    // যদি মোট বেশি হয় TABLE_W থেকে — proportionally scale down
-    // যদি কম হয় — বাকি জায়গা Description (5) ও Remarks (9) তে দেওয়া
     let colWidths;
     if (rawTotal > TABLE_W) {
       const scale = TABLE_W / rawTotal;
@@ -279,14 +252,10 @@ router.get('/pdf', protectQuery, async (req, res) => {
     } else {
       colWidths = [...paddedWidths];
       const extra = TABLE_W - rawTotal;
-      // extra space Description ও Remarks এ ভাগ করা (60/40)
       colWidths[5] += Math.floor(extra * 0.6);
       colWidths[9] += Math.floor(extra * 0.4);
     }
-
-    // floating point gap fix — শেষ column-এ বাকি দেওয়া
-    const widthSum = colWidths.reduce((a, b) => a + b, 0);
-    colWidths[9] += TABLE_W - widthSum;
+    colWidths[9] += TABLE_W - colWidths.reduce((a, b) => a + b, 0);
 
     const drawTableHeader = (y) => {
       doc.fillColor('#1a365d').rect(MARGIN_X, y, TABLE_W, HEADER_H).fill();
@@ -305,21 +274,22 @@ router.get('/pdf', protectQuery, async (req, res) => {
 
     const getDateRange = () => {
       const { startDate, endDate, month, year } = req.query;
-      if (startDate && endDate) {
+      if (startDate && endDate)
         return {
           from: formatDate(new Date(startDate)),
           to: formatDate(new Date(endDate)),
         };
-      } else if (month && year) {
-        const from = new Date(year, month - 1, 1);
-        const to = new Date(year, month, 0);
-        return { from: formatDate(from), to: formatDate(to) };
-      } else if (year) {
+      else if (month && year)
+        return {
+          from: formatDate(new Date(year, month - 1, 1)),
+          to: formatDate(new Date(year, month, 0)),
+        };
+      else if (year)
         return {
           from: formatDate(new Date(year, 0, 1)),
           to: formatDate(new Date(year, 11, 31)),
         };
-      } else if (expenses.length > 0) {
+      else if (expenses.length > 0) {
         const dates = expenses.map((e) => new Date(e.date));
         return {
           from: formatDate(new Date(Math.min(...dates))),
@@ -340,19 +310,23 @@ router.get('/pdf', protectQuery, async (req, res) => {
         });
       y += 22;
       const { from, to } = getDateRange();
-      const generatedLine = 'Generated: ' + formatDateTime(new Date());
-      const periodLine = 'From: ' + from + '   To: ' + to;
       doc
         .fillColor('#555')
         .fontSize(9)
         .font('Helvetica')
-        .text(generatedLine, MARGIN_X, y, { align: 'center', width: TABLE_W });
+        .text('Generated: ' + formatDateTime(new Date()), MARGIN_X, y, {
+          align: 'center',
+          width: TABLE_W,
+        });
       y += 14;
       doc
         .fillColor('#555')
         .fontSize(9)
         .font('Helvetica')
-        .text(periodLine, MARGIN_X, y, { align: 'center', width: TABLE_W });
+        .text('From: ' + from + '   To: ' + to, MARGIN_X, y, {
+          align: 'center',
+          width: TABLE_W,
+        });
       return y + 18;
     };
 
@@ -403,10 +377,9 @@ router.get('/pdf', protectQuery, async (req, res) => {
       y += ROW_H;
     });
 
-    // Grand Total row — auto height, no wrap
-    const TOTAL_PADDING_Y = 7;
-    const TOTAL_FONT_SIZE = 9;
-
+    // Grand Total row
+    const TOTAL_PADDING_Y = 7,
+      TOTAL_FONT_SIZE = 9;
     const totalRow = [
       '',
       '',
@@ -419,7 +392,6 @@ router.get('/pdf', protectQuery, async (req, res) => {
       total.toFixed(2),
       '',
     ];
-
     doc.fontSize(TOTAL_FONT_SIZE).font('Helvetica-Bold');
     let maxTotalRowH = 26;
     totalRow.forEach((cell, i) => {
@@ -432,12 +404,10 @@ router.get('/pdf', protectQuery, async (req, res) => {
         TOTAL_PADDING_Y * 2;
       if (h > maxTotalRowH) maxTotalRowH = h;
     });
-
     if (y + maxTotalRowH > CONTENT_MAX_Y) {
       doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
       y = 30;
     }
-
     doc.fillColor('#ebf8ff').rect(MARGIN_X, y, TABLE_W, maxTotalRowH).fill();
     doc
       .strokeColor('#2b6cb0')
@@ -446,7 +416,6 @@ router.get('/pdf', protectQuery, async (req, res) => {
       .lineTo(MARGIN_X + TABLE_W, y)
       .stroke();
     doc.fillColor('#1a365d').fontSize(TOTAL_FONT_SIZE).font('Helvetica-Bold');
-
     let x = MARGIN_X;
     totalRow.forEach((cell, i) => {
       doc.text(cell, x + 3, y + TOTAL_PADDING_Y, {
@@ -458,7 +427,7 @@ router.get('/pdf', protectQuery, async (req, res) => {
       x += colWidths[i];
     });
 
-    // Footer on every page
+    // Footer
     const totalPages = doc.bufferedPageRange().count;
     for (let i = 0; i < totalPages; i++) {
       doc.switchToPage(i);
@@ -490,7 +459,332 @@ router.get('/pdf', protectQuery, async (req, res) => {
         });
       doc.restore();
     }
+    doc.flushPages();
+    doc.end();
+  } catch (error) {
+    if (!res.headersSent) res.status(500).json({ message: error.message });
+  }
+});
 
+// ── Yearly Summary API (JSON — for preview) ──────────────────────────────────
+router.get('/yearly-summary', protect, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await Expense.aggregate([
+      {
+        $match: {
+          user: req.user._id,
+          date: {
+            $gte: new Date(year, 0, 1),
+            $lte: new Date(year, 11, 31, 23, 59, 59),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { itemType: '$itemType', itemDescription: '$itemDescription' },
+          totalQty: { $sum: '$quantity' },
+          totalAmount: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.itemType': 1, '_id.itemDescription': 1 } },
+    ]);
+    const result = rows.map((r) => ({
+      itemType: r._id.itemType,
+      itemDescription: r._id.itemDescription,
+      totalQty: parseFloat((r.totalQty || 0).toFixed(3)),
+      totalAmount: r.totalAmount,
+      count: r.count,
+    }));
+    const totalQty = result.reduce((s, r) => s + r.totalQty, 0);
+    const totalAmount = result.reduce((s, r) => s + r.totalAmount, 0);
+    res.json({ rows: result, totalQty, totalAmount, year });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── Yearly Summary Excel ──────────────────────────────────────────────────────
+router.get('/yearly-excel', protectQuery, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await Expense.aggregate([
+      {
+        $match: {
+          user: req.user._id,
+          date: {
+            $gte: new Date(year, 0, 1),
+            $lte: new Date(year, 11, 31, 23, 59, 59),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { itemType: '$itemType', itemDescription: '$itemDescription' },
+          totalQty: { $sum: '$quantity' },
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+      { $sort: { '_id.itemType': 1, '_id.itemDescription': 1 } },
+    ]);
+    const totalQty = rows.reduce((s, r) => s + (r.totalQty || 0), 0);
+    const totalAmount = rows.reduce((s, r) => s + r.totalAmount, 0);
+    const data = rows.map((r, i) => ({
+      '#': i + 1,
+      'Item Type': r._id.itemType,
+      'Item Description': r._id.itemDescription,
+      'Total Qty': parseFloat((r.totalQty || 0).toFixed(3)),
+      'Total Amount (BDT)': r.totalAmount,
+    }));
+    data.push({
+      '#': '',
+      'Item Type': '',
+      'Item Description': 'TOTAL',
+      'Total Qty': parseFloat(totalQty.toFixed(3)),
+      'Total Amount (BDT)': totalAmount,
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 5 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 12 },
+      { wch: 18 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Yearly Summary ' + year);
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=yearly_summary_' +
+        year +
+        '_' +
+        Date.now() +
+        '.xlsx',
+    );
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ── Yearly Summary PDF ────────────────────────────────────────────────────────
+router.get('/yearly-pdf', protectQuery, async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await Expense.aggregate([
+      {
+        $match: {
+          user: req.user._id,
+          date: {
+            $gte: new Date(year, 0, 1),
+            $lte: new Date(year, 11, 31, 23, 59, 59),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { itemType: '$itemType', itemDescription: '$itemDescription' },
+          totalQty: { $sum: '$quantity' },
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+      { $sort: { '_id.itemType': 1, '_id.itemDescription': 1 } },
+    ]);
+    const totalQty = rows.reduce((s, r) => s + (r.totalQty || 0), 0);
+    const totalAmount = rows.reduce((s, r) => s + r.totalAmount, 0);
+
+    const fmtQty = (q) => {
+      const n = parseFloat(q) || 0;
+      return Number.isInteger(n)
+        ? n.toString()
+        : parseFloat(n.toFixed(3)).toString();
+    };
+
+    const PAGE_W = 595.28,
+      PAGE_H = 841.89,
+      MARGIN_X = 30;
+    const TABLE_W = PAGE_W - MARGIN_X * 2;
+    const ROW_H = 18,
+      HEADER_H = 22,
+      FOOTER_H = 20;
+    const CONTENT_MAX_Y = PAGE_H - FOOTER_H - 10;
+
+    const doc = new PDFDocument({
+      size: [PAGE_W, PAGE_H],
+      margin: 0,
+      autoFirstPage: true,
+      bufferPages: true,
+    });
+    const buffers = [];
+    doc.on('data', (chunk) => buffers.push(chunk));
+    doc.on('end', () => {
+      const pdfBuffer = Buffer.concat(buffers);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename=yearly_summary_' +
+          year +
+          '_' +
+          Date.now() +
+          '.pdf',
+      );
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.status(200).send(pdfBuffer);
+    });
+    doc.on('error', (err) => {
+      if (!res.headersSent) res.status(500).json({ message: err.message });
+    });
+
+    // columns: #, Item Type, Description, Total Qty, Total Amount
+    const headers = [
+      '#',
+      'Item Type',
+      'Description',
+      'Total Qty',
+      'Total Amount (BDT)',
+    ];
+    const colRatios = [0.05, 0.18, 0.42, 0.13, 0.22];
+    const colWidths = colRatios.map((r) => Math.floor(TABLE_W * r));
+    colWidths[4] += TABLE_W - colWidths.reduce((a, b) => a + b, 0);
+    const colAlign = (i) => (i === 3 || i === 4 ? 'right' : 'left');
+
+    const drawHeader = (y) => {
+      doc.fillColor('#1a365d').rect(MARGIN_X, y, TABLE_W, HEADER_H).fill();
+      doc.fillColor('white').fontSize(8).font('Helvetica-Bold');
+      let x = MARGIN_X;
+      headers.forEach((h, i) => {
+        doc.text(h, x + 3, y + 6, {
+          width: colWidths[i] - 3,
+          align: colAlign(i),
+          lineBreak: false,
+        });
+        x += colWidths[i];
+      });
+      return y + HEADER_H;
+    };
+
+    // Title
+    let y = 30;
+    doc
+      .fillColor('#1a365d')
+      .fontSize(16)
+      .font('Helvetica-Bold')
+      .text('Yearly Expense Summary — ' + year, MARGIN_X, y, {
+        align: 'center',
+        width: TABLE_W,
+      });
+    y += 22;
+    doc
+      .fillColor('#555')
+      .fontSize(9)
+      .font('Helvetica')
+      .text('Generated: ' + formatDateTime(new Date()), MARGIN_X, y, {
+        align: 'center',
+        width: TABLE_W,
+      });
+    y += 20;
+    y = drawHeader(y);
+    doc.font('Helvetica').fontSize(8).fillColor('#2d3748');
+
+    rows.forEach((r, idx) => {
+      if (y + ROW_H > CONTENT_MAX_Y) {
+        doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
+        y = 30;
+        y = drawHeader(y);
+        doc.font('Helvetica').fontSize(8).fillColor('#2d3748');
+      }
+      const rowColor = idx % 2 === 0 ? '#f7fafc' : '#ffffff';
+      doc.fillColor(rowColor).rect(MARGIN_X, y, TABLE_W, ROW_H).fill();
+      doc.fillColor('#2d3748');
+      const row = [
+        (idx + 1).toString(),
+        r._id.itemType,
+        r._id.itemDescription,
+        fmtQty(r.totalQty),
+        r.totalAmount.toFixed(2),
+      ];
+      let x = MARGIN_X;
+      row.forEach((cell, i) => {
+        doc.text(cell, x + 3, y + 4, {
+          width: colWidths[i] - 6,
+          align: colAlign(i),
+          lineBreak: false,
+          ellipsis: true,
+        });
+        x += colWidths[i];
+      });
+      doc
+        .strokeColor('#e2e8f0')
+        .lineWidth(0.5)
+        .moveTo(MARGIN_X, y + ROW_H)
+        .lineTo(MARGIN_X + TABLE_W, y + ROW_H)
+        .stroke();
+      y += ROW_H;
+    });
+
+    // Total row
+    if (y + 28 > CONTENT_MAX_Y) {
+      doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
+      y = 30;
+    }
+    doc.fillColor('#ebf8ff').rect(MARGIN_X, y, TABLE_W, 26).fill();
+    doc
+      .strokeColor('#2b6cb0')
+      .lineWidth(1.5)
+      .moveTo(MARGIN_X, y)
+      .lineTo(MARGIN_X + TABLE_W, y)
+      .stroke();
+    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold');
+    let x = MARGIN_X;
+    ['', '', 'GRAND TOTAL', fmtQty(totalQty), totalAmount.toFixed(2)].forEach(
+      (cell, i) => {
+        doc.text(cell, x + 3, y + 7, {
+          width: colWidths[i] - 6,
+          align: colAlign(i),
+          lineBreak: false,
+        });
+        x += colWidths[i];
+      },
+    );
+
+    // Footer
+    const totalPages = doc.bufferedPageRange().count;
+    for (let i = 0; i < totalPages; i++) {
+      doc.switchToPage(i);
+      const fy = PAGE_H - 16;
+      doc.save();
+      doc
+        .strokeColor('#cbd5e0')
+        .lineWidth(0.5)
+        .moveTo(MARGIN_X, fy - 5)
+        .lineTo(MARGIN_X + TABLE_W, fy - 5)
+        .stroke();
+      doc
+        .fontSize(7.5)
+        .font('Helvetica')
+        .fillColor('#777')
+        .text('expensemasterone.vercel.app  |  Dev by Zahid', MARGIN_X, fy, {
+          width: TABLE_W * 0.6,
+          align: 'left',
+          lineBreak: false,
+        });
+      doc
+        .fontSize(7.5)
+        .font('Helvetica')
+        .fillColor('#777')
+        .text('Page ' + (i + 1) + ' of ' + totalPages, MARGIN_X, fy, {
+          width: TABLE_W,
+          align: 'right',
+          lineBreak: false,
+        });
+      doc.restore();
+    }
     doc.flushPages();
     doc.end();
   } catch (error) {
