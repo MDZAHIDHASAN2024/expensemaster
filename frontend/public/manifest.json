@@ -2,10 +2,17 @@
   "short_name": "ExpenseMaster",
   "name": "ExpenseMaster - Expense Tracker",
   "description": "Track and manage your daily expenses easily",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#1a365d",
+  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "categories": ["finance", "productivity", "utilities"],
   "icons": [
     { "src": "/icon-72x72.png", "sizes": "72x72", "type": "image/png" },
     { "src": "/icon-96x96.png", "sizes": "96x96", "type": "image/png" },
-    { "src": "/icon-128x128.png", "sizes": "128x128", "type": "image/png" },
     { "src": "/icon-144x144.png", "sizes": "144x144", "type": "image/png" },
     { "src": "/icon-152x152.png", "sizes": "152x152", "type": "image/png" },
     {
@@ -21,11 +28,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "start_url": "/",
-  "scope": "/",
-  "display": "standalone",
-  "theme_color": "#1a365d",
-  "background_color": "#ffffff",
-  "orientation": "portrait"
+  ]
 }
