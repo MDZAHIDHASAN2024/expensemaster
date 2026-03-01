@@ -21,6 +21,21 @@ function Spinner({ text }) {
   );
 }
 
+const MONTHS = [
+  { v: '1', l: 'January' },
+  { v: '2', l: 'February' },
+  { v: '3', l: 'March' },
+  { v: '4', l: 'April' },
+  { v: '5', l: 'May' },
+  { v: '6', l: 'June' },
+  { v: '7', l: 'July' },
+  { v: '8', l: 'August' },
+  { v: '9', l: 'September' },
+  { v: '10', l: 'October' },
+  { v: '11', l: 'November' },
+  { v: '12', l: 'December' },
+];
+
 export default function Reports() {
   const [filters, setFilters] = useState({
     startDate: '',
@@ -35,10 +50,11 @@ export default function Reports() {
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewQty, setPreviewQty] = useState(0);
 
-  // Yearly summary
-  const [yearlyYear, setYearlyYear] = useState(
+  // Yearly/Monthly summary
+  const [summaryYear, setSummaryYear] = useState(
     new Date().getFullYear().toString(),
   );
+  const [summaryMonth, setSummaryMonth] = useState('');
   const [yearlySummary, setYearlySummary] = useState([]);
   const [yearlyLoading, setYearlyLoading] = useState(false);
   const [yearlyTotal, setYearlyTotal] = useState({ qty: 0, amount: 0 });
@@ -81,20 +97,29 @@ export default function Reports() {
       const baseURL =
         process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
       const path = type === 'excel' ? 'reports/excel' : 'reports/pdf';
-      const fullURL = `${baseURL}/${path}?${buildParams()}&token=${user.token}`;
-      window.open(fullURL, '_blank');
+      window.open(
+        `${baseURL}/${path}?${buildParams()}&token=${user.token}`,
+        '_blank',
+      );
       toast.success(type === 'excel' ? 'Excel exported!' : 'PDF exported!');
     } catch (err) {
       toast.error('Export failed');
     }
   };
 
-  // Yearly summary load
-  const loadYearlySummary = async () => {
+  // Build query params for summary (year + optional month)
+  const buildSummaryParams = () => {
+    const p = new URLSearchParams();
+    p.set('year', summaryYear);
+    if (summaryMonth) p.set('month', summaryMonth);
+    return p.toString();
+  };
+
+  const loadSummary = async () => {
     setYearlyLoading(true);
     try {
       const { data } = await API.get(
-        '/reports/yearly-summary?year=' + yearlyYear,
+        '/reports/yearly-summary?' + buildSummaryParams(),
       );
       setYearlySummary(data.rows || []);
       setYearlyTotal({
@@ -102,40 +127,27 @@ export default function Reports() {
         amount: data.totalAmount || 0,
       });
     } catch (err) {
-      toast.error('Failed to load yearly summary');
+      toast.error('Failed to load summary');
     }
     setYearlyLoading(false);
   };
 
-  const exportYearly = (type) => {
+  const exportSummary = (type) => {
     try {
       const user = JSON.parse(localStorage.getItem('expenseUser') || '{}');
       const baseURL =
         process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
       const path =
         type === 'excel' ? 'reports/yearly-excel' : 'reports/yearly-pdf';
-      const fullURL = `${baseURL}/${path}?year=${yearlyYear}&token=${user.token}`;
-      window.open(fullURL, '_blank');
+      window.open(
+        `${baseURL}/${path}?${buildSummaryParams()}&token=${user.token}`,
+        '_blank',
+      );
       toast.success(type === 'excel' ? 'Excel exported!' : 'PDF exported!');
     } catch (err) {
       toast.error('Export failed');
     }
   };
-
-  const months = [
-    { v: '1', l: 'January' },
-    { v: '2', l: 'February' },
-    { v: '3', l: 'March' },
-    { v: '4', l: 'April' },
-    { v: '5', l: 'May' },
-    { v: '6', l: 'June' },
-    { v: '7', l: 'July' },
-    { v: '8', l: 'August' },
-    { v: '9', l: 'September' },
-    { v: '10', l: 'October' },
-    { v: '11', l: 'November' },
-    { v: '12', l: 'December' },
-  ];
 
   const formatDate = (d) => {
     const dt = new Date(d);
@@ -147,6 +159,10 @@ export default function Reports() {
       dt.getFullYear()
     );
   };
+
+  const summaryPeriodLabel = summaryMonth
+    ? MONTHS.find((m) => m.v === summaryMonth)?.l + ' ' + summaryYear
+    : 'Full Year ' + summaryYear;
 
   return (
     <div>
@@ -195,7 +211,7 @@ export default function Reports() {
               }
             >
               <option value="">All Months</option>
-              {months.map((m) => (
+              {MONTHS.map((m) => (
                 <option key={m.v} value={m.v}>
                   {m.l}
                 </option>
@@ -373,16 +389,18 @@ export default function Reports() {
         </div>
       )}
 
-      {/* ── Yearly Summary ── */}
+      {/* ── Item Summary (Year + Month) ── */}
       <div className="card" style={{ marginTop: 28 }}>
-        <h3 style={{ marginBottom: 16, color: 'var(--primary)' }}>
-          📅 Yearly Item Summary
+        <h3 style={{ marginBottom: 6, color: 'var(--primary)' }}>
+          📅 Item Summary
         </h3>
         <p
           style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 14 }}
         >
-          Selected year এ কোন item কত qty ও কত amount খরচ হয়েছে
+          কোন item কত qty ও কত amount খরচ হয়েছে — year বা specific month
+          অনুযায়ী
         </p>
+
         <div
           style={{
             display: 'flex',
@@ -391,11 +409,14 @@ export default function Reports() {
             alignItems: 'flex-end',
           }}
         >
+          {/* Year */}
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Year</label>
+            <label style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+              Year
+            </label>
             <select
-              value={yearlyYear}
-              onChange={(e) => setYearlyYear(e.target.value)}
+              value={summaryYear}
+              onChange={(e) => setSummaryYear(e.target.value)}
               style={{
                 padding: '8px 12px',
                 borderRadius: 8,
@@ -410,9 +431,36 @@ export default function Reports() {
               ))}
             </select>
           </div>
+
+          {/* Month */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+              Month
+            </label>
+            <select
+              value={summaryMonth}
+              onChange={(e) => setSummaryMonth(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1.5px solid var(--border)',
+                fontSize: 13,
+                background: 'var(--input-bg)',
+                color: 'var(--text)',
+              }}
+            >
+              <option value="">— Full Year —</option>
+              {MONTHS.map((m) => (
+                <option key={m.v} value={m.v}>
+                  {m.l}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             className="btn btn-primary"
-            onClick={loadYearlySummary}
+            onClick={loadSummary}
             disabled={yearlyLoading}
           >
             {yearlyLoading ? (
@@ -426,7 +474,7 @@ export default function Reports() {
           </button>
           <button
             className="btn btn-success"
-            onClick={() => exportYearly('excel')}
+            onClick={() => exportSummary('excel')}
             disabled={yearlyLoading}
           >
             📊 Export Excel
@@ -437,14 +485,14 @@ export default function Reports() {
               background: 'linear-gradient(135deg,#c53030,#e53e3e)',
               color: 'white',
             }}
-            onClick={() => exportYearly('pdf')}
+            onClick={() => exportSummary('pdf')}
             disabled={yearlyLoading}
           >
             📄 Export PDF
           </button>
         </div>
 
-        {yearlyLoading && <Spinner text="Loading yearly summary..." />}
+        {yearlyLoading && <Spinner text="Loading summary..." />}
 
         {!yearlyLoading && yearlySummary.length > 0 && (
           <>
@@ -459,6 +507,16 @@ export default function Reports() {
             >
               <span>
                 <strong>{yearlySummary.length}</strong> items
+                <span
+                  style={{
+                    marginLeft: 10,
+                    fontSize: 12,
+                    color: 'var(--text-light)',
+                    fontWeight: 400,
+                  }}
+                >
+                  ({summaryPeriodLabel})
+                </span>
               </span>
               <div style={{ display: 'flex', gap: 20 }}>
                 <span>
@@ -487,7 +545,6 @@ export default function Reports() {
                   <tr>
                     <th>#</th>
                     <th>Item Type</th>
-                    <th>Item Description</th>
                     <th style={{ textAlign: 'right' }}>Total Qty</th>
                     <th style={{ textAlign: 'right' }}>Total Amount (৳)</th>
                   </tr>
@@ -499,17 +556,19 @@ export default function Reports() {
                       <td>
                         <span className="badge badge-blue">{row.itemType}</span>
                       </td>
-                      <td>{row.itemDescription}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {row.totalQty}
                       </td>
-                      <td className="amount-cell">
+                      <td
+                        className="amount-cell"
+                        style={{ textAlign: 'right' }}
+                      >
                         ৳{row.totalAmount.toLocaleString()}
                       </td>
                     </tr>
                   ))}
                   <tr className="total-row">
-                    <td colSpan={3} style={{ textAlign: 'right' }}>
+                    <td colSpan={2} style={{ textAlign: 'right' }}>
                       TOTAL
                     </td>
                     <td
@@ -521,7 +580,7 @@ export default function Reports() {
                     >
                       {yearlyTotal.qty.toLocaleString()}
                     </td>
-                    <td className="amount-cell">
+                    <td className="amount-cell" style={{ textAlign: 'right' }}>
                       ৳{yearlyTotal.amount.toLocaleString()}
                     </td>
                   </tr>
@@ -534,7 +593,7 @@ export default function Reports() {
         {!yearlyLoading && yearlySummary.length === 0 && (
           <div className="empty-state" style={{ marginTop: 20 }}>
             <div className="empty-icon">📅</div>
-            <p>Year select করে Preview চাপুন</p>
+            <p>Year/Month select করে Preview চাপুন</p>
           </div>
         )}
       </div>

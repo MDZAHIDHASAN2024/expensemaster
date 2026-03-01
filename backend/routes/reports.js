@@ -21,7 +21,6 @@ const protectQuery = async (req, res, next) => {
   }
 };
 
-// middleware/auth এর protect ও দরকার yearly-summary এর জন্য
 const { protect } = require('../middleware/auth');
 
 const getFilteredExpenses = async (userId, query) => {
@@ -70,6 +69,21 @@ const formatDateTime = (date) => {
   const ss = now.getSeconds().toString().padStart(2, '0');
   return dd + '/' + mm + '/' + yyyy + ' ' + hh + ':' + min + ':' + ss;
 };
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 // ── Export Excel (filtered) ──────────────────────────────────────────────────
 router.get('/excel', protectQuery, async (req, res) => {
@@ -377,7 +391,6 @@ router.get('/pdf', protectQuery, async (req, res) => {
       y += ROW_H;
     });
 
-    // Grand Total row
     const TOTAL_PADDING_Y = 7,
       TOTAL_FONT_SIZE = 9;
     const totalRow = [
@@ -427,7 +440,6 @@ router.get('/pdf', protectQuery, async (req, res) => {
       x += colWidths[i];
     });
 
-    // Footer
     const totalPages = doc.bufferedPageRange().count;
     for (let i = 0; i < totalPages; i++) {
       doc.switchToPage(i);
@@ -443,11 +455,16 @@ router.get('/pdf', protectQuery, async (req, res) => {
         .fontSize(7.5)
         .font('Helvetica')
         .fillColor('#777')
-        .text('expensemasterone.vercel.app  |  Dev by Zahid', MARGIN_X, fy, {
-          width: TABLE_W * 0.6,
-          align: 'left',
-          lineBreak: false,
-        });
+        .text(
+          'expensemasterone.vercel.app  |  Developed by Zahid Hasan Mobile: 01745940065',
+          MARGIN_X,
+          fy,
+          {
+            width: TABLE_W * 0.6,
+            align: 'left',
+            lineBreak: false,
+          },
+        );
       doc
         .fontSize(7.5)
         .font('Helvetica')
@@ -466,136 +483,157 @@ router.get('/pdf', protectQuery, async (req, res) => {
   }
 });
 
-// ── Yearly Summary API (JSON — for preview) ──────────────────────────────────
+// ── Helper: build date filter for yearly/monthly summary ─────────────────────
+const buildSummaryDateFilter = (year, month) => {
+  const y = parseInt(year);
+  const m = month ? parseInt(month) : null;
+  if (m) {
+    return {
+      $gte: new Date(y, m - 1, 1),
+      $lte: new Date(y, m, 0, 23, 59, 59),
+    };
+  }
+  return {
+    $gte: new Date(y, 0, 1),
+    $lte: new Date(y, 11, 31, 23, 59, 59),
+  };
+};
+
+// ── Yearly/Monthly Summary API (JSON — for preview) ──────────────────────────
 router.get('/yearly-summary', protect, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+
     const rows = await Expense.aggregate([
       {
         $match: {
           user: req.user._id,
-          date: {
-            $gte: new Date(year, 0, 1),
-            $lte: new Date(year, 11, 31, 23, 59, 59),
-          },
+          date: buildSummaryDateFilter(year, month),
         },
       },
       {
         $group: {
-          _id: { itemType: '$itemType', itemDescription: '$itemDescription' },
+          _id: '$itemType',
           totalQty: { $sum: '$quantity' },
           totalAmount: { $sum: '$amount' },
           count: { $sum: 1 },
         },
       },
-      { $sort: { '_id.itemType': 1, '_id.itemDescription': 1 } },
+      { $sort: { _id: 1 } },
     ]);
+
     const result = rows.map((r) => ({
-      itemType: r._id.itemType,
-      itemDescription: r._id.itemDescription,
+      itemType: r._id,
       totalQty: parseFloat((r.totalQty || 0).toFixed(3)),
       totalAmount: r.totalAmount,
       count: r.count,
     }));
     const totalQty = result.reduce((s, r) => s + r.totalQty, 0);
     const totalAmount = result.reduce((s, r) => s + r.totalAmount, 0);
-    res.json({ rows: result, totalQty, totalAmount, year });
+    res.json({ rows: result, totalQty, totalAmount, year, month });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ── Yearly Summary Excel ──────────────────────────────────────────────────────
+// ── Yearly/Monthly Summary Excel ──────────────────────────────────────────────
 router.get('/yearly-excel', protectQuery, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+    const periodLabel = month
+      ? MONTH_NAMES[month - 1] + ' ' + year
+      : 'Full Year ' + year;
+
     const rows = await Expense.aggregate([
       {
         $match: {
           user: req.user._id,
-          date: {
-            $gte: new Date(year, 0, 1),
-            $lte: new Date(year, 11, 31, 23, 59, 59),
-          },
+          date: buildSummaryDateFilter(year, month),
         },
       },
       {
         $group: {
-          _id: { itemType: '$itemType', itemDescription: '$itemDescription' },
+          _id: '$itemType',
           totalQty: { $sum: '$quantity' },
           totalAmount: { $sum: '$amount' },
         },
       },
-      { $sort: { '_id.itemType': 1, '_id.itemDescription': 1 } },
+      { $sort: { _id: 1 } },
     ]);
+
     const totalQty = rows.reduce((s, r) => s + (r.totalQty || 0), 0);
     const totalAmount = rows.reduce((s, r) => s + r.totalAmount, 0);
+
     const data = rows.map((r, i) => ({
       '#': i + 1,
-      'Item Type': r._id.itemType,
-      'Item Description': r._id.itemDescription,
+      'Item Type': r._id,
       'Total Qty': parseFloat((r.totalQty || 0).toFixed(3)),
       'Total Amount (BDT)': r.totalAmount,
     }));
     data.push({
       '#': '',
-      'Item Type': '',
-      'Item Description': 'TOTAL',
+      'Item Type': 'TOTAL',
       'Total Qty': parseFloat(totalQty.toFixed(3)),
       'Total Amount (BDT)': totalAmount,
     });
+
     const ws = XLSX.utils.json_to_sheet(data);
-    ws['!cols'] = [
-      { wch: 5 },
-      { wch: 18 },
-      { wch: 28 },
-      { wch: 12 },
-      { wch: 18 },
-    ];
+    ws['!cols'] = [{ wch: 5 }, { wch: 22 }, { wch: 12 }, { wch: 18 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Yearly Summary ' + year);
+    XLSX.utils.book_append_sheet(
+      wb,
+      ws,
+      'Summary ' + (month ? MONTH_NAMES[month - 1].slice(0, 3) : year),
+    );
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = month
+      ? 'summary_' +
+        MONTH_NAMES[month - 1].toLowerCase() +
+        '_' +
+        year +
+        '_' +
+        Date.now() +
+        '.xlsx'
+      : 'yearly_summary_' + year + '_' + Date.now() + '.xlsx';
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
-    res.setHeader(
-      'Content-Disposition',
-      'attachment; filename=yearly_summary_' +
-        year +
-        '_' +
-        Date.now() +
-        '.xlsx',
-    );
+    res.setHeader('Content-Disposition', 'attachment; filename=' + filename);
     res.send(buffer);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// ── Yearly Summary PDF ────────────────────────────────────────────────────────
+// ── Yearly/Monthly Summary PDF ────────────────────────────────────────────────
 router.get('/yearly-pdf', protectQuery, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+    const periodLabel = month
+      ? MONTH_NAMES[month - 1] + ' ' + year
+      : 'Year ' + year;
+
     const rows = await Expense.aggregate([
       {
         $match: {
           user: req.user._id,
-          date: {
-            $gte: new Date(year, 0, 1),
-            $lte: new Date(year, 11, 31, 23, 59, 59),
-          },
+          date: buildSummaryDateFilter(year, month),
         },
       },
       {
         $group: {
-          _id: { itemType: '$itemType', itemDescription: '$itemDescription' },
+          _id: '$itemType',
           totalQty: { $sum: '$quantity' },
           totalAmount: { $sum: '$amount' },
         },
       },
-      { $sort: { '_id.itemType': 1, '_id.itemDescription': 1 } },
+      { $sort: { _id: 1 } },
     ]);
+
     const totalQty = rows.reduce((s, r) => s + (r.totalQty || 0), 0);
     const totalAmount = rows.reduce((s, r) => s + r.totalAmount, 0);
 
@@ -626,14 +664,16 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
     doc.on('end', () => {
       const pdfBuffer = Buffer.concat(buffers);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader(
-        'Content-Disposition',
-        'attachment; filename=yearly_summary_' +
+      const filename = month
+        ? 'summary_' +
+          MONTH_NAMES[month - 1].toLowerCase() +
+          '_' +
           year +
           '_' +
           Date.now() +
-          '.pdf',
-      );
+          '.pdf'
+        : 'yearly_summary_' + year + '_' + Date.now() + '.pdf';
+      res.setHeader('Content-Disposition', 'attachment; filename=' + filename);
       res.setHeader('Content-Length', pdfBuffer.length);
       res.status(200).send(pdfBuffer);
     });
@@ -641,18 +681,11 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
       if (!res.headersSent) res.status(500).json({ message: err.message });
     });
 
-    // columns: #, Item Type, Description, Total Qty, Total Amount
-    const headers = [
-      '#',
-      'Item Type',
-      'Description',
-      'Total Qty',
-      'Total Amount (BDT)',
-    ];
-    const colRatios = [0.05, 0.18, 0.42, 0.13, 0.22];
+    const headers = ['#', 'Item Type', 'Total Qty', 'Total Amount (BDT)'];
+    const colRatios = [0.06, 0.52, 0.18, 0.24];
     const colWidths = colRatios.map((r) => Math.floor(TABLE_W * r));
-    colWidths[4] += TABLE_W - colWidths.reduce((a, b) => a + b, 0);
-    const colAlign = (i) => (i === 3 || i === 4 ? 'right' : 'left');
+    colWidths[3] += TABLE_W - colWidths.reduce((a, b) => a + b, 0);
+    const colAlign = (i) => (i === 2 || i === 3 ? 'right' : 'left');
 
     const drawHeader = (y) => {
       doc.fillColor('#1a365d').rect(MARGIN_X, y, TABLE_W, HEADER_H).fill();
@@ -669,13 +702,12 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
       return y + HEADER_H;
     };
 
-    // Title
     let y = 30;
     doc
       .fillColor('#1a365d')
       .fontSize(16)
       .font('Helvetica-Bold')
-      .text('Yearly Expense Summary — ' + year, MARGIN_X, y, {
+      .text('Item Type Summary — ' + periodLabel, MARGIN_X, y, {
         align: 'center',
         width: TABLE_W,
       });
@@ -704,8 +736,7 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
       doc.fillColor('#2d3748');
       const row = [
         (idx + 1).toString(),
-        r._id.itemType,
-        r._id.itemDescription,
+        r._id,
         fmtQty(r.totalQty),
         r.totalAmount.toFixed(2),
       ];
@@ -728,7 +759,6 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
       y += ROW_H;
     });
 
-    // Total row
     if (y + 28 > CONTENT_MAX_Y) {
       doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
       y = 30;
@@ -742,7 +772,7 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
       .stroke();
     doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold');
     let x = MARGIN_X;
-    ['', '', 'GRAND TOTAL', fmtQty(totalQty), totalAmount.toFixed(2)].forEach(
+    ['', 'GRAND TOTAL', fmtQty(totalQty), totalAmount.toFixed(2)].forEach(
       (cell, i) => {
         doc.text(cell, x + 3, y + 7, {
           width: colWidths[i] - 6,
@@ -753,7 +783,6 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
       },
     );
 
-    // Footer
     const totalPages = doc.bufferedPageRange().count;
     for (let i = 0; i < totalPages; i++) {
       doc.switchToPage(i);
@@ -769,11 +798,16 @@ router.get('/yearly-pdf', protectQuery, async (req, res) => {
         .fontSize(7.5)
         .font('Helvetica')
         .fillColor('#777')
-        .text('expensemasterone.vercel.app  |  Dev by Zahid', MARGIN_X, fy, {
-          width: TABLE_W * 0.6,
-          align: 'left',
-          lineBreak: false,
-        });
+        .text(
+          'expensemasterone.vercel.app  |  Developed by Zahid Hasan Mobile: 01745940065',
+          MARGIN_X,
+          fy,
+          {
+            width: TABLE_W * 0.6,
+            align: 'left',
+            lineBreak: false,
+          },
+        );
       doc
         .fontSize(7.5)
         .font('Helvetica')

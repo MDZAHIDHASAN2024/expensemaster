@@ -178,7 +178,7 @@ export default function NeedItemsAnalytics() {
   return (
     <div>
       <div className="page-header">
-        <h1>🛒 Need Item's Analytics</h1>
+        <h1>🛒Item's Analytics</h1>
         <p style={{ color: 'var(--text-light)', fontSize: 13, marginTop: 4 }}>
           Item Type ও Description অনুযায়ী Qty ও Amount এর গড় বিশ্লেষণ
         </p>

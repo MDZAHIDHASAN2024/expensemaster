@@ -11,9 +11,15 @@ import axios from 'axios';
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
-const TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
-const LAST_ACTIVE_KEY = 'expenseLastActive';
-const TAB_CLOSED_KEY = 'expenseTabClosed';
+const TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes inactivity
+const LAST_ACTIVE_KEY = 'expenseLastActive'; // localStorage — inactivity track
+const SESSION_ALIVE_KEY = 'expenseSessionAlive'; // sessionStorage — tab/browser close detect
+
+// sessionStorage behavior:
+//   reload             → টিকে থাকে  ✅ (logout হবে না)
+//   tab close          → মুছে যায়  ✅ (logout হবে)
+//   browser close      → মুছে যায়  ✅ (logout হবে)
+//   mobile recent close → মুছে যায় ✅ (logout হবে)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -25,6 +31,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     localStorage.removeItem('expenseUser');
     localStorage.removeItem(LAST_ACTIVE_KEY);
+    sessionStorage.removeItem(SESSION_ALIVE_KEY);
     delete axios.defaults.headers.common['Authorization'];
     document.body.classList.remove('dark');
     setDarkMode(false);
@@ -42,7 +49,7 @@ export const AuthProvider = ({ children }) => {
     return Date.now() - parseInt(last) > TIMEOUT_MS;
   }, []);
 
-  // Desktop timer — mobile এ pause হয়, তাই visibilitychange দিয়েও check করা হয়
+  // 20 min inactivity timer
   const scheduleCheck = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
@@ -50,13 +57,12 @@ export const AuthProvider = ({ children }) => {
     }, TIMEOUT_MS + 1000);
   }, [isExpired, doLogout]);
 
-  // Activity handler
   const onActivity = useCallback(() => {
     updateLastActive();
     scheduleCheck();
   }, [updateLastActive, scheduleCheck]);
 
-  // Activity events
+  // Mouse/keyboard/touch activity track
   useEffect(() => {
     if (!user) return;
     const events = [
@@ -74,8 +80,7 @@ export const AuthProvider = ({ children }) => {
       events.forEach((e) => window.removeEventListener(e, onActivity));
   }, [user, onActivity]);
 
-  // visibilitychange — mobile app switch / tab switch
-  // mobile এ setTimeout কাজ করে না, তাই ফিরে এলে timestamp check করা হয়
+  // Mobile app switch বা tab switch — ফিরে এলে expiry check
   useEffect(() => {
     const handleVisibility = () => {
       if (!user) return;
@@ -94,27 +99,19 @@ export const AuthProvider = ({ children }) => {
       document.removeEventListener('visibilitychange', handleVisibility);
   }, [user, isExpired, doLogout, updateLastActive, scheduleCheck]);
 
-  // Tab/browser close detection
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (user) sessionStorage.setItem(TAB_CLOSED_KEY, 'true');
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [user]);
-
   // Initial load
   useEffect(() => {
-    // Tab বন্ধ করে নতুন session খুললে logout
-    const tabClosed = sessionStorage.getItem(TAB_CLOSED_KEY);
-    if (tabClosed) {
-      sessionStorage.removeItem(TAB_CLOSED_KEY);
+    const sessionAlive = sessionStorage.getItem(SESSION_ALIVE_KEY);
+
+    if (!sessionAlive) {
+      // নতুন tab/browser খোলা — clear করো
       localStorage.removeItem('expenseUser');
       localStorage.removeItem(LAST_ACTIVE_KEY);
       setLoading(false);
       return;
     }
 
+    // Reload — sessionStorage আছে, user টিকবে
     const stored = localStorage.getItem('expenseUser');
     if (stored) {
       if (isExpired()) {
@@ -137,6 +134,7 @@ export const AuthProvider = ({ children }) => {
   }, []); // eslint-disable-line
 
   const login = async (userData) => {
+    sessionStorage.setItem(SESSION_ALIVE_KEY, 'true'); // session শুরু mark
     setUser(userData);
     localStorage.setItem('expenseUser', JSON.stringify(userData));
     axios.defaults.headers.common['Authorization'] = `Bearer ${userData.token}`;

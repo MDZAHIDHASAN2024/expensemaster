@@ -17,11 +17,11 @@ export default function Layout() {
     { to: '/', icon: '📊', label: 'Dashboard', end: true },
     { to: '/expenses', icon: '💰', label: 'Expenses' },
     { to: '/income', icon: '💵', label: 'Income' },
-    { to: '/analytics', icon: '📈', label: 'Analytics' },
-    { to: '/need-items-analytics', icon: '🛒', label: "Need Item's Analytics" },
+    { to: '/analytics', icon: '📈', label: 'Expense Analytics' },
+    { to: '/need-items-analytics', icon: '🛒', label: "Item's Analytics" },
     { to: '/budget', icon: '🎯', label: 'Budget' },
     { to: '/recurring', icon: '🔁', label: 'Recurring' },
-    { to: '/reports', icon: '📋', label: 'Reports' },
+    { to: '/reports', icon: '📋', label: 'View Reports' },
     { to: '/categories', icon: '🏷️', label: 'Categories' },
     { to: '/family', icon: '👨‍👩‍👧', label: 'Family' },
     { to: '/settings', icon: '⚙️', label: 'Settings' },
@@ -35,7 +35,7 @@ export default function Layout() {
         <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
           ☰
         </button>
-        <h2>💵 ExpenseBook</h2>
+        <h2>💵 ExpenseMaster </h2>
         <button className="hamburger-btn" onClick={toggleDarkMode}>
           {darkMode ? '☀️' : '🌙'}
         </button>
@@ -51,7 +51,7 @@ export default function Layout() {
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
           <h2>
-            <span>💵</span> ExpenseBook
+            <span>💵</span> ExpenseMaster
           </h2>
         </div>
         <nav>
