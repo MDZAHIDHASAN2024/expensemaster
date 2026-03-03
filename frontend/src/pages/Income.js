@@ -155,8 +155,7 @@ export default function Income() {
     setDeleteId(null);
   };
 
-  const exportFile = async (type) => {
-    setExporting(type);
+  const exportFile = (type) => {
     try {
       const user = JSON.parse(localStorage.getItem('expenseUser') || '{}');
       const p = new URLSearchParams();
@@ -168,26 +167,27 @@ export default function Income() {
         if (filters.year) p.set('year', filters.year);
       }
       if (filters.incomeType) p.set('incomeType', filters.incomeType);
-      const url =
-        type === 'excel'
-          ? '/api/income/report/excel'
-          : '/api/income/report/pdf';
-      const response = await fetch(url + '?' + p, {
-        headers: { Authorization: 'Bearer ' + user.token },
-      });
-      if (!response.ok) throw new Error('Export failed');
-      const blob = await response.blob();
-      const link = window.URL.createObjectURL(blob);
+      if (user.token) p.set('token', user.token);
+
+      const base = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      const endpoint =
+        type === 'excel' ? '/income/report/excel' : '/income/report/pdf';
+
       const a = document.createElement('a');
-      a.href = link;
+      a.href = base + endpoint + '?' + p;
       a.download =
         'income_' + Date.now() + (type === 'excel' ? '.xlsx' : '.pdf');
+      document.body.appendChild(a);
       a.click();
-      toast.success(type === 'excel' ? 'Excel exported!' : 'PDF exported!');
+      document.body.removeChild(a);
+
+      toast.success(
+        type === 'excel' ? '✅ Excel exported!' : '✅ PDF exported!',
+      );
     } catch (err) {
-      toast.error('Export failed');
+      console.error('Export error:', err);
+      toast.error('Export failed!');
     }
-    setExporting('');
   };
 
   const months = [
@@ -204,6 +204,7 @@ export default function Income() {
     { v: '11', l: 'November' },
     { v: '12', l: 'December' },
   ];
+
   const fmtDate = (d) => {
     const dt = new Date(d);
     return (
@@ -223,9 +224,8 @@ export default function Income() {
           <button
             className="btn btn-success"
             onClick={() => exportFile('excel')}
-            disabled={!!exporting}
           >
-            {exporting === 'excel' ? '⏳ Exporting...' : '📊 Excel'}
+            '📊 Excel'
           </button>
           <button
             className="btn"
@@ -234,9 +234,8 @@ export default function Income() {
               color: 'white',
             }}
             onClick={() => exportFile('pdf')}
-            disabled={!!exporting}
           >
-            {exporting === 'pdf' ? '⏳ Exporting...' : '📄 PDF'}
+            '📄 PDF'
           </button>
           <button className="btn btn-primary" onClick={openAdd}>
             + Add Income

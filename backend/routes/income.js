@@ -4,6 +4,8 @@ const Income = require('../models/Income');
 const { protect } = require('../middleware/auth');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 const MONTH_NAMES = [
   'January',
@@ -75,6 +77,33 @@ const getPeriodLabel = (query, incomes) => {
     return `${formatDate(new Date(Math.min(...dates)))} — ${formatDate(new Date(Math.max(...dates)))}`;
   }
   return '';
+};
+
+// ✅ Export routes এর জন্য special middleware
+// Header Authorization অথবা query ?token= দুটো থেকেই token নেয়
+const protectExport = async (req, res, next) => {
+  try {
+    let token;
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer')
+    ) {
+      token = req.headers.authorization.split(' ')[1];
+    } else if (req.query.token) {
+      token = req.query.token;
+    }
+    if (!token) {
+      return res.status(401).json({ message: 'Not authorized, no token' });
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findById(decoded.id).select('-password');
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Token invalid or expired' });
+  }
 };
 
 // Get all incomes
@@ -154,8 +183,8 @@ router.get('/stats', protect, async (req, res) => {
   }
 });
 
-// Export Excel
-router.get('/report/excel', protect, async (req, res) => {
+// ✅ Export Excel — protectExport ব্যবহার করা হয়েছে
+router.get('/report/excel', protectExport, async (req, res) => {
   try {
     const filter = getFilter(req.user._id, req.query);
     const incomes = await Income.find(filter).sort({ date: 1 });
@@ -214,8 +243,8 @@ router.get('/report/excel', protect, async (req, res) => {
   }
 });
 
-// Export PDF - A4 Landscape
-router.get('/report/pdf', protect, async (req, res) => {
+// ✅ Export PDF — protectExport ব্যবহার করা হয়েছে
+router.get('/report/pdf', protectExport, async (req, res) => {
   try {
     const filter = getFilter(req.user._id, req.query);
     const incomes = await Income.find(filter).sort({ date: 1 });
@@ -223,8 +252,8 @@ router.get('/report/pdf', protect, async (req, res) => {
     const totalQty = incomes.reduce((s, i) => s + (i.quantity || 0), 0);
     const periodLabel = getPeriodLabel(req.query, incomes);
 
-    const PAGE_W = 595.28; // A4 portrait width
-    const PAGE_H = 841.89; // A4 portrait height
+    const PAGE_W = 595.28;
+    const PAGE_H = 841.89;
     const MARGIN_X = 30;
     const TABLE_W = PAGE_W - MARGIN_X * 2;
     const ROW_H = 18;
@@ -284,7 +313,6 @@ router.get('/report/pdf', protect, async (req, res) => {
       return yPos + HEADER_H;
     };
 
-    // Title section — fixed y positions
     let y = 28;
     doc
       .fontSize(18)
@@ -360,7 +388,6 @@ router.get('/report/pdf', protect, async (req, res) => {
       y += ROW_H;
     });
 
-    // Total row
     if (y + 28 > CONTENT_MAX_Y) {
       doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
       y = 30;
@@ -386,7 +413,6 @@ router.get('/report/pdf', protect, async (req, res) => {
       },
     );
 
-    // Footer — every page
     const totalPages = doc.bufferedPageRange().count;
     for (let i = 0; i < totalPages; i++) {
       doc.switchToPage(i);

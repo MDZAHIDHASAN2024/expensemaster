@@ -11,20 +11,27 @@ import axios from 'axios';
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
-const TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes inactivity
-const LAST_ACTIVE_KEY = 'expenseLastActive'; // localStorage — inactivity track
-const SESSION_ALIVE_KEY = 'expenseSessionAlive'; // sessionStorage — tab/browser close detect
+const TIMEOUT_MS = 20 * 60 * 1000;
+const LAST_ACTIVE_KEY = 'expenseLastActive';
+const SESSION_ALIVE_KEY = 'expenseSessionAlive';
+const DARK_MODE_KEY = 'expenseDarkMode'; // ✅ dark mode আলাদা key এ রাখা হবে
 
-// sessionStorage behavior:
-//   reload             → টিকে থাকে  ✅ (logout হবে না)
-//   tab close          → মুছে যায়  ✅ (logout হবে)
-//   browser close      → মুছে যায়  ✅ (logout হবে)
-//   mobile recent close → মুছে যায় ✅ (logout হবে)
+// ✅ Page load এর সাথে সাথে dark mode apply করো — flicker এড়াতে
+const initDarkMode = () => {
+  const saved = localStorage.getItem(DARK_MODE_KEY);
+  if (saved === 'true') {
+    document.body.classList.add('dark');
+    return true;
+  }
+  document.body.classList.remove('dark');
+  return false;
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
+  // ✅ localStorage থেকে সরাসরি initial value নাও
+  const [darkMode, setDarkMode] = useState(() => initDarkMode());
   const timerRef = useRef(null);
 
   const doLogout = useCallback((redirect = true) => {
@@ -33,8 +40,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(LAST_ACTIVE_KEY);
     sessionStorage.removeItem(SESSION_ALIVE_KEY);
     delete axios.defaults.headers.common['Authorization'];
-    document.body.classList.remove('dark');
-    setDarkMode(false);
+    // ✅ logout এ dark mode localStorage টিকে থাকবে — reset করব না
     if (timerRef.current) clearTimeout(timerRef.current);
     if (redirect) window.location.href = '/login';
   }, []);
@@ -49,7 +55,6 @@ export const AuthProvider = ({ children }) => {
     return Date.now() - parseInt(last) > TIMEOUT_MS;
   }, []);
 
-  // 20 min inactivity timer
   const scheduleCheck = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
@@ -62,7 +67,6 @@ export const AuthProvider = ({ children }) => {
     scheduleCheck();
   }, [updateLastActive, scheduleCheck]);
 
-  // Mouse/keyboard/touch activity track
   useEffect(() => {
     if (!user) return;
     const events = [
@@ -80,7 +84,6 @@ export const AuthProvider = ({ children }) => {
       events.forEach((e) => window.removeEventListener(e, onActivity));
   }, [user, onActivity]);
 
-  // Mobile app switch বা tab switch — ফিরে এলে expiry check
   useEffect(() => {
     const handleVisibility = () => {
       if (!user) return;
@@ -104,14 +107,13 @@ export const AuthProvider = ({ children }) => {
     const sessionAlive = sessionStorage.getItem(SESSION_ALIVE_KEY);
 
     if (!sessionAlive) {
-      // নতুন tab/browser খোলা — clear করো
       localStorage.removeItem('expenseUser');
       localStorage.removeItem(LAST_ACTIVE_KEY);
+      // ✅ dark mode localStorage টিকে থাকবে এখানেও
       setLoading(false);
       return;
     }
 
-    // Reload — sessionStorage আছে, user টিকবে
     const stored = localStorage.getItem('expenseUser');
     if (stored) {
       if (isExpired()) {
@@ -124,9 +126,11 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       axios.defaults.headers.common['Authorization'] =
         `Bearer ${userData.token}`;
-      const dm = userData.darkMode || false;
+      // ✅ dark mode localStorage থেকে নাও — user data থেকে নয়
+      const dm = localStorage.getItem(DARK_MODE_KEY) === 'true';
       setDarkMode(dm);
       if (dm) document.body.classList.add('dark');
+      else document.body.classList.remove('dark');
       updateLastActive();
       scheduleCheck();
     }
@@ -134,12 +138,14 @@ export const AuthProvider = ({ children }) => {
   }, []); // eslint-disable-line
 
   const login = async (userData) => {
-    sessionStorage.setItem(SESSION_ALIVE_KEY, 'true'); // session শুরু mark
+    sessionStorage.setItem(SESSION_ALIVE_KEY, 'true');
     setUser(userData);
     localStorage.setItem('expenseUser', JSON.stringify(userData));
     axios.defaults.headers.common['Authorization'] = `Bearer ${userData.token}`;
+    // ✅ login এ user এর DB darkMode preference নাও, localStorage এ save করো
     const dm = userData.darkMode || false;
     setDarkMode(dm);
+    localStorage.setItem(DARK_MODE_KEY, dm.toString());
     if (dm) document.body.classList.add('dark');
     else document.body.classList.remove('dark');
     updateLastActive();
@@ -154,13 +160,16 @@ export const AuthProvider = ({ children }) => {
   const toggleDarkMode = async () => {
     const newVal = !darkMode;
     setDarkMode(newVal);
+    // ✅ আলাদা key এ save — session এর সাথে যুক্ত নয়
+    localStorage.setItem(DARK_MODE_KEY, newVal.toString());
     if (newVal) document.body.classList.add('dark');
     else document.body.classList.remove('dark');
+    // ✅ user object ও update করো
+    const updated = { ...user, darkMode: newVal };
+    setUser(updated);
+    localStorage.setItem('expenseUser', JSON.stringify(updated));
     try {
       await axios.put('/api/settings/profile', { darkMode: newVal });
-      const updated = { ...user, darkMode: newVal };
-      setUser(updated);
-      localStorage.setItem('expenseUser', JSON.stringify(updated));
     } catch (e) {}
   };
 
