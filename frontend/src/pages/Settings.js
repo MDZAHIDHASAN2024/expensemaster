@@ -3,7 +3,7 @@ import API from '../utils/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
-const APP_VERSION = 'Current Version 0.01';
+const APP_VERSION = 'Current Version 0.02';
 
 export default function Settings() {
   const { user, updateUser, darkMode, toggleDarkMode, logout } = useAuth();

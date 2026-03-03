@@ -37,7 +37,7 @@ function Spinner() {
 }
 
 export default function NeedItemsAnalytics() {
-  const [days, setDays] = useState(365);
+  const [days, setDays] = useState(30);
   const [groupBy, setGroupBy] = useState('month');
   const [selectedType, setSelectedType] = useState('');
   const [selectedDesc, setSelectedDesc] = useState('');
@@ -48,7 +48,6 @@ export default function NeedItemsAnalytics() {
   const [sortKey, setSortKey] = useState('totalAmount');
   const [sortDir, setSortDir] = useState(-1);
 
-  // লক্ষ্য (target) — description wise, localStorage এ save
   const [targets, setTargets] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('needItemTargets') || '{}');
@@ -147,7 +146,10 @@ export default function NeedItemsAnalytics() {
   const totalQtyS = data.reduce((s, r) => s + (r.totalQty || 0), 0);
   const totalCount = data.reduce((s, r) => s + (r.count || 0), 0);
 
-  // লক্ষ্য অনুযায়ী মোট কত বাঁচানো/বেশি খরচ
+  // Per day averages
+  const avgPerDayAmt = days ? Math.round(totalAmt / days) : 0;
+  const avgPerDayQty = days ? parseFloat((totalQtyS / days).toFixed(2)) : 0;
+
   const savingsSummary = (() => {
     let saved = 0,
       over = 0,
@@ -187,6 +189,7 @@ export default function NeedItemsAnalytics() {
       {/* Summary Cards */}
       {!loading && data.length > 0 && (
         <div className="stat-grid" style={{ marginBottom: 18 }}>
+          {/* মোট খরচ */}
           <div className="stat-card">
             <div
               className="stat-icon"
@@ -199,6 +202,8 @@ export default function NeedItemsAnalytics() {
               <div className="value">৳{totalAmt.toLocaleString()}</div>
             </div>
           </div>
+
+          {/* মোট Qty */}
           <div className="stat-card">
             <div
               className="stat-icon"
@@ -211,6 +216,8 @@ export default function NeedItemsAnalytics() {
               <div className="value">{fmtNum(totalQtyS)}</div>
             </div>
           </div>
+
+          {/* Avg Per Day (৳) — days এর উপর base করে */}
           <div className="stat-card">
             <div
               className="stat-icon"
@@ -219,15 +226,44 @@ export default function NeedItemsAnalytics() {
               📊
             </div>
             <div className="stat-info">
-              <div className="label">Avg per Entry</div>
-              <div className="value">
-                ৳
-                {totalCount
-                  ? Math.round(totalAmt / totalCount).toLocaleString()
-                  : 0}
+              <div className="label">Avg Per Day (৳)</div>
+              <div className="value">৳{avgPerDayAmt.toLocaleString()}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-light)',
+                  marginTop: 2,
+                }}
+              >
+                শেষ {days} দিনের গড়
               </div>
             </div>
           </div>
+
+          {/* Avg Per Day Qty — days এর উপর base করে */}
+          <div className="stat-card">
+            <div
+              className="stat-icon"
+              style={{ background: '#e9d8fd', fontSize: 22 }}
+            >
+              📈
+            </div>
+            <div className="stat-info">
+              <div className="label">Avg Per Day Qty</div>
+              <div className="value">{avgPerDayQty.toLocaleString()}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-light)',
+                  marginTop: 2,
+                }}
+              >
+                শেষ {days} দিনের গড়
+              </div>
+            </div>
+          </div>
+
+          {/* লক্ষ্য তুলনায় */}
           {savingsSummary.hasTarget && (
             <div className="stat-card">
               <div
@@ -284,7 +320,7 @@ export default function NeedItemsAnalytics() {
             alignItems: 'flex-end',
           }}
         >
-          {/* Days filter */}
+          {/* Days filter — 7 দিন যোগ করা হয়েছে */}
           <div>
             <div
               style={{
@@ -297,7 +333,7 @@ export default function NeedItemsAnalytics() {
               সময়সীমা
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              {[30, 90, 180, 365].map((d) => (
+              {[7, 30, 90, 180, 365].map((d) => (
                 <button
                   key={d}
                   onClick={() => setDays(d)}
@@ -308,35 +344,6 @@ export default function NeedItemsAnalytics() {
               ))}
             </div>
           </div>
-
-          {/* Group By
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                color: 'var(--text-light)',
-                marginBottom: 6,
-                fontWeight: 600,
-              }}
-            >
-              GROUP BY
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[
-                ['month', '📅 মাস'],
-                ['week', '📆 সপ্তাহ'],
-                ['day', '📅 দিন'],
-              ].map(([v, l]) => (
-                <button
-                  key={v}
-                  onClick={() => setGroupBy(v)}
-                  style={btnStyle(groupBy === v)}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div> */}
 
           {/* Item Type */}
           <div>

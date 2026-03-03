@@ -29,28 +29,48 @@ export default function Login() {
       <div className="auth-card">
         <div className="auth-logo">💵</div>
         <h1>Welcome Back</h1>
-        <p>Sign in to your ExpenseBook account</p>
+        <p>Sign in to your ExpenseMaster account</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email Address</label>
             <input
-              type="email" required placeholder="you@example.com"
-              value={form.email} onChange={e => setForm({...form, email: e.target.value})}
+              type="email"
+              required
+              placeholder="Your Email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </div>
           <div className="form-group">
             <label>Password</label>
             <input
-              type="password" required placeholder="Your password"
-              value={form.password} onChange={e => setForm({...form, password: e.target.value})}
+              type="password"
+              required
+              placeholder="Your password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </div>
-          <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
+          <button
+            className="btn btn-primary btn-full"
+            type="submit"
+            disabled={loading}
+          >
             {loading ? 'Signing in...' : '🔑 Sign In'}
           </button>
         </form>
-        <p style={{marginTop:20, textAlign:'center', fontSize:13, color:'#718096'}}>
-          Don't have an account? <Link to="/register" style={{color:'#2b6cb0', fontWeight:600}}>Create one</Link>
+        <p
+          style={{
+            marginTop: 20,
+            textAlign: 'center',
+            fontSize: 13,
+            color: '#718096',
+          }}
+        >
+          Don't have an account?{' '}
+          <Link to="/register" style={{ color: '#2b6cb0', fontWeight: 600 }}>
+            Create one
+          </Link>
         </p>
       </div>
     </div>
